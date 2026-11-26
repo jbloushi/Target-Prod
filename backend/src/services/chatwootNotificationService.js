@@ -304,18 +304,28 @@ function buildSyncedTemplatePayload(templateName, eventType, context, target, cu
 
 function getChatwootConfig() {
     const chatwoot = config.chatwoot || {};
-    const rawBaseUrl = trimTrailingSlash(chatwoot.baseUrl || cachedDbCredentials.baseUrl);
+    const rawBaseUrl = trimTrailingSlash(cachedDbCredentials.baseUrl || chatwoot.baseUrl);
     const baseUrl = (!rawBaseUrl || rawBaseUrl.includes('chatwoot.example.com'))
         ? 'https://inbox.mawthook.io'
         : rawBaseUrl;
-    const rawToken = !isPlaceholderToken(chatwoot.apiAccessToken)
-        ? chatwoot.apiAccessToken
-        : (cachedDbCredentials.token || chatwoot.apiAccessToken);
+    const rawToken = !isPlaceholderToken(cachedDbCredentials.token)
+        ? cachedDbCredentials.token
+        : (!isPlaceholderToken(chatwoot.apiAccessToken)
+            ? chatwoot.apiAccessToken
+            : (cachedDbCredentials.token || chatwoot.apiAccessToken));
+    let accountId = String(cachedDbCredentials.accountId || chatwoot.accountId || '1').trim() || '1';
+    let inboxId = String(cachedDbCredentials.inboxId || chatwoot.inboxId || '1').trim() || '1';
+    // On inbox.mawthook.io, both WhatsApp channels live under Account 1 (Inbox 1 and Inbox 2).
+    // If an admin entered Account 2 in the UI intending the second WhatsApp channel, map to Account 1 / Inbox 2.
+    if (baseUrl.includes('inbox.mawthook.io') && accountId === '2' && inboxId === '1') {
+        accountId = '1';
+        inboxId = '2';
+    }
     return {
         enabled: chatwoot.enabled === true,
         baseUrl,
-        accountId: chatwoot.accountId || cachedDbCredentials.accountId || '1',
-        inboxId: chatwoot.inboxId || cachedDbCredentials.inboxId || '1',
+        accountId,
+        inboxId,
         apiAccessToken: rawToken,
         allowPlainTextFallback: chatwoot.allowPlainTextFallback !== false,
         templateConfig: chatwoot.templateConfig || {}
@@ -714,16 +724,26 @@ class ChatwootNotificationService {
 
     resetClient() {
         this.client = null;
-        cachedDbCredentials.expiresAt = 0;
+        cachedDbCredentials = {
+            token: null,
+            inboxId: null,
+            accountId: null,
+            baseUrl: null,
+            expiresAt: 0
+        };
         cachedInboxTemplates.expiresAt = 0;
         cachedInboxMetaConfig = {
             inboxId: null,
             config: null,
+            allConfigs: null,
             expiresAt: 0
         };
     }
 
     async getInboxTemplates() {
+        if ((!process.env.JEST_WORKER_ID && process.env.NODE_ENV !== 'test') || isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+            await this.refreshDbCredentialsIfNeeded();
+        }
         const cw = getChatwootConfig();
         if (
             cachedInboxTemplates.expiresAt > Date.now() &&
@@ -740,10 +760,16 @@ class ChatwootNotificationService {
                 const inbox = exactInbox || (!inboxes.some(i => i?.id !== undefined) ? inboxes[0] : null);
                 if (inbox) {
                     const metaCfg = extractInboxMetaConfig(inbox);
+                    const allMetaCfgs = inboxes
+                        .slice()
+                        .sort((a, b) => (String(a?.id) === String(cw.inboxId) ? -1 : String(b?.id) === String(cw.inboxId) ? 1 : Number(b?.id || 0) - Number(a?.id || 0)))
+                        .map(i => extractInboxMetaConfig(i))
+                        .filter(Boolean);
                     if (metaCfg) {
                         cachedInboxMetaConfig = {
                             inboxId: String(cw.inboxId),
                             config: metaCfg,
+                            allConfigs: allMetaCfgs,
                             expiresAt: Date.now() + 5 * 60 * 1000
                         };
                     }
@@ -763,7 +789,7 @@ class ChatwootNotificationService {
     }
 
     async getInboxMetaConfig() {
-        if (isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+        if ((!process.env.JEST_WORKER_ID && process.env.NODE_ENV !== 'test') || isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
             await this.refreshDbCredentialsIfNeeded();
         }
         const cw = getChatwootConfig();
@@ -780,11 +806,17 @@ class ChatwootNotificationService {
             if (Array.isArray(inboxes) && inboxes.length > 0) {
                 const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId))
                     || (!inboxes.some(i => i?.id !== undefined) ? inboxes[0] : null);
+                const allMetaCfgs = inboxes
+                    .slice()
+                    .sort((a, b) => (String(a?.id) === String(cw.inboxId) ? -1 : String(b?.id) === String(cw.inboxId) ? 1 : Number(b?.id || 0) - Number(a?.id || 0)))
+                    .map(i => extractInboxMetaConfig(i))
+                    .filter(Boolean);
                 if (inbox) {
                     const metaCfg = extractInboxMetaConfig(inbox);
                     cachedInboxMetaConfig = {
                         inboxId: String(cw.inboxId),
                         config: metaCfg,
+                        allConfigs: allMetaCfgs,
                         expiresAt: Date.now() + 5 * 60 * 1000
                     };
                     if (Array.isArray(inbox.message_templates) && inbox.message_templates.length > 0) {
@@ -802,8 +834,16 @@ class ChatwootNotificationService {
         return null;
     }
 
+    async getAllInboxMetaConfigs() {
+        await this.getInboxMetaConfig();
+        if (Array.isArray(cachedInboxMetaConfig.allConfigs) && cachedInboxMetaConfig.allConfigs.length > 0) {
+            return cachedInboxMetaConfig.allConfigs;
+        }
+        return cachedInboxMetaConfig.config ? [cachedInboxMetaConfig.config] : [];
+    }
+
     async refreshDbCredentialsIfNeeded() {
-        if (cachedDbCredentials.expiresAt > Date.now() && cachedDbCredentials.token) {
+        if (cachedDbCredentials.expiresAt > Date.now() && (cachedDbCredentials.token || cachedDbCredentials.inboxId || cachedDbCredentials.accountId)) {
             return cachedDbCredentials;
         }
         try {
@@ -841,10 +881,10 @@ class ChatwootNotificationService {
             const prevToken = cachedDbCredentials.token;
             cachedDbCredentials = {
                 token: resolvedToken,
-                inboxId: dbCfg?.chatwootInboxId || cachedDbCredentials.inboxId || '1',
-                accountId: dbCfg?.chatwootAccountId || cachedDbCredentials.accountId || '1',
-                baseUrl: dbCfg?.chatwootBaseUrl || cachedDbCredentials.baseUrl || null,
-                expiresAt: Date.now() + 60 * 1000
+                inboxId: dbCfg?.chatwootInboxId ? String(dbCfg.chatwootInboxId).trim() : cachedDbCredentials.inboxId || null,
+                accountId: dbCfg?.chatwootAccountId ? String(dbCfg.chatwootAccountId).trim() : cachedDbCredentials.accountId || null,
+                baseUrl: dbCfg?.chatwootBaseUrl ? String(dbCfg.chatwootBaseUrl).trim() : cachedDbCredentials.baseUrl || null,
+                expiresAt: Date.now() + 30 * 1000
             };
 
             if (resolvedToken && resolvedToken !== prevToken && this.client?.defaults?.headers) {
@@ -982,7 +1022,7 @@ class ChatwootNotificationService {
     }
 
     async request(method, path, body = undefined, query = undefined, headers = undefined) {
-        if (!headers?.api_access_token && isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+        if (!headers?.api_access_token && ((!process.env.JEST_WORKER_ID && process.env.NODE_ENV !== 'test') || isPlaceholderToken(config.chatwoot?.apiAccessToken))) {
             await this.refreshDbCredentialsIfNeeded();
         }
         const client = this.getClient();

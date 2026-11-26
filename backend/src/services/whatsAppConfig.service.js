@@ -172,6 +172,13 @@ class WhatsAppConfigService {
             include: { rules: true }
         });
 
+        try {
+            const chatwootService = require('./chatwootNotificationService');
+            if (typeof chatwootService?.resetClient === 'function') {
+                chatwootService.resetClient();
+            }
+        } catch (_) {}
+
         logger.info(`[WhatsAppConfig] Updated config ${updated.id} provider=${updated.provider}`);
         return maskSecrets(updated);
     }
