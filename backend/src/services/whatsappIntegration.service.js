@@ -29,6 +29,14 @@ function normalizePhone(phone, phoneCountryCode = '965') {
     let digits = s.replace(/\D/g, '');
     if (!digits) return null;
 
+    // Auto-detect common full international country codes without leading '+' before prepending fallback dial code
+    const KNOWN_COUNTRY_CODES = ['965', '966', '971', '974', '973', '968', '20'];
+    for (const cc of KNOWN_COUNTRY_CODES) {
+        if (digits.startsWith(cc) && digits.length >= cc.length + 7) {
+            return `+${digits}`;
+        }
+    }
+
     if (dialDigits) {
         if (digits.startsWith(dialDigits) && digits.length >= dialDigits.length + 7) {
             return `+${digits}`;
