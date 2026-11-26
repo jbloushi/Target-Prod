@@ -59,14 +59,14 @@ async function run() {
     console.log('================================================================\n');
 
     // 1. Fetch all real shipments created since sinceDate
-    const shipments = await prisma.shipment.findMany({
+    const rawShipments = await prisma.shipment.findMany({
         where: {
             createdAt: { gte: sinceDate },
-            isDemo: false,
             status: { notIn: ['cancelled', 'CANCELLED', 'draft', 'DRAFT'] }
         },
         orderBy: { createdAt: 'desc' }
     });
+    const shipments = rawShipments.filter((s) => !String(s.trackingNumber || '').toUpperCase().startsWith('DEMO'));
 
     // 2. Fetch all shipper notification logs for these shipments
     const shipmentIds = shipments.map((s) => s.id);
