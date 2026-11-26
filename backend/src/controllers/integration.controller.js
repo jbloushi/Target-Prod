@@ -182,14 +182,46 @@ exports.handleLogesTechsWebhook = async (req, res) => {
     return res.status(200).json({ ok: true });
 };
 
+let cachedLiveChatwootWebhookSecrets = {
+    secrets: [],
+    expiresAt: 0
+};
+
+async function getLiveChatwootWebhookSecrets() {
+    if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) return [];
+    if (cachedLiveChatwootWebhookSecrets.expiresAt > Date.now() && cachedLiveChatwootWebhookSecrets.secrets.length > 0) {
+        return cachedLiveChatwootWebhookSecrets.secrets;
+    }
+    try {
+        if (typeof chatwootNotificationService?.request === 'function') {
+            const res = await chatwootNotificationService.request('get', '/api/v1/accounts/1/webhooks');
+            const hooks = res?.payload?.webhooks || res?.payload || [];
+            const secrets = Array.isArray(hooks)
+                ? hooks.map(h => h?.secret).filter(s => typeof s === 'string' && s.trim().length > 0)
+                : [];
+            cachedLiveChatwootWebhookSecrets = {
+                secrets,
+                expiresAt: Date.now() + 5 * 60 * 1000
+            };
+            return secrets;
+        }
+    } catch (_) {}
+    return [];
+}
+
 exports.handleChatwootWebhook = async (req, res) => {
     const webhookSecret = config.chatwoot?.webhookSecret;
-    if (!webhookSecret) {
+    const liveSecrets = (!webhookSecret || !verifyChatwootSignature(req, webhookSecret))
+        ? await getLiveChatwootWebhookSecrets()
+        : [];
+    const candidateSecrets = [webhookSecret, ...liveSecrets].filter(Boolean);
+
+    if (candidateSecrets.length === 0) {
         if (process.env.NODE_ENV !== 'test' || process.env.ENFORCE_WEBHOOK_SECRETS === 'true') {
             logger.warn('[chatwoot-webhook] Webhook secret not configured on server - failing closed');
             return res.status(401).json({ ok: false, error: 'Webhook secret is not configured' });
         }
-    } else if (!verifyChatwootSignature(req, webhookSecret)) {
+    } else if (!candidateSecrets.some(sec => verifyChatwootSignature(req, sec))) {
         logger.warn('[chatwoot-webhook] invalid signature — request rejected');
         return res.status(401).json({ ok: false, error: 'Invalid webhook signature' });
     }

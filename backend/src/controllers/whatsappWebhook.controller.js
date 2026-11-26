@@ -112,7 +112,7 @@ async function handleWebhookEvent(req, res) {
 
             logger.info(`[WhatsApp Status Webhook] Processing receipt: id=${update.id} status=${normalizedStatus}${update.error ? ` error=${update.error}` : ''}${update.raw?.errors ? ` errors=${JSON.stringify(update.raw.errors)}` : ''}`);
 
-            const existingLog = await prisma.shipmentNotificationLog.findFirst({
+            let existingLog = await prisma.shipmentNotificationLog.findFirst({
                 where: {
                     OR: [
                         { chatwootMessageId: update.id },
@@ -120,6 +120,23 @@ async function handleWebhookEvent(req, res) {
                     ]
                 }
             });
+
+            // Also match Chatwoot logs where update.id is the Meta WAMID stored in responseJson.source_id / wamid
+            if (!existingLog && String(update.id || '').startsWith('wamid.')) {
+                const recentCwLogs = await prisma.shipmentNotificationLog.findMany({
+                    where: {
+                        provider: { in: ['chatwoot', 'CHATWOOT'] },
+                        status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted', 'DELIVERED', 'delivered'] }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 50
+                }).catch(() => []);
+                existingLog = recentCwLogs.find((l) => {
+                    const rj = l?.responseJson;
+                    if (!rj || typeof rj !== 'object') return false;
+                    return rj.source_id === update.id || rj.wamid === update.id || rj.response?.source_id === update.id;
+                }) || null;
+            }
 
             if (existingLog) {
                 // Do not downgrade READ back to DELIVERED or SENT
@@ -166,10 +183,40 @@ async function handleWebhookEvent(req, res) {
             }
         }
 
-        // If received directly from Meta (not forwarded), forward to msg.target-kw.com microservice
+        // If received directly from Meta (not forwarded), forward to msg.target-kw.com microservice and Chatwoot WhatsApp webhook
         const isForwarded = req.headers['x-forwarded-from'];
         const settings = getSystemSettings()?.whatsapp || {};
         const serviceUrl = String(settings.serviceUrl || 'https://msg.target-kw.com').replace(/\/+$/, '');
+        if (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account') {
+            const axios = require('axios');
+            const displayPhones = new Set();
+            for (const entry of (body.entry || [])) {
+                for (const change of (entry.changes || [])) {
+                    const dp = change?.value?.metadata?.display_phone_number;
+                    const cleanDp = String(dp || '').replace(/\D/g, '');
+                    if (cleanDp) displayPhones.add(cleanDp);
+                }
+            }
+            // Forward to Chatwoot WhatsApp channel endpoint (e.g. https://inbox.mawthook.io/webhooks/whatsapp/+96596749435)
+            if (isForwarded !== 'chatwoot') {
+                const cwBaseUrl = String(process.env.CHATWOOT_BASE_URL || 'https://inbox.mawthook.io').replace(/\/+$/, '');
+                const rawSignature = req.headers['x-hub-signature-256'] || '';
+                const phonesToForward = displayPhones.size > 0 ? Array.from(displayPhones) : ['96596749435'];
+                for (const cleanPhone of phonesToForward) {
+                    // Avoid double-forwarding +96569656563 if cloudflare-whatsapp-router already forwarded it
+                    if (isForwarded === 'cloudflare-whatsapp-router' && cleanPhone === '96569656563') continue;
+                    const cwWebhookUrl = `${cwBaseUrl}/webhooks/whatsapp/+${cleanPhone}`;
+                    axios.post(cwWebhookUrl, body, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(rawSignature ? { 'X-Hub-Signature-256': rawSignature } : {}),
+                            'X-Forwarded-From': 'target-prod'
+                        },
+                        timeout: 5000
+                    }).catch(err => logger.debug(`[WhatsApp Webhook Forward to Chatwoot (+${cleanPhone}) failed] ${err.message}`));
+                }
+            }
+        }
         if (!isForwarded && serviceUrl) {
             const axios = require('axios');
             if (body.object === 'whatsapp_business_account' || body.object === 'whatsapp_account') {
