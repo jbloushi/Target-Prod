@@ -110,7 +110,7 @@ async function handleWebhookEvent(req, res) {
             else if (raw.includes('FAIL') || raw.includes('ERROR')) normalizedStatus = 'FAILED';
             else if (raw.includes('SENT') || raw.includes('SERVER_ACK') || raw.includes('SUBMIT')) normalizedStatus = 'SENT';
 
-            logger.info(`[WhatsApp Status Webhook] Processing receipt: id=${update.id} status=${normalizedStatus}`);
+            logger.info(`[WhatsApp Status Webhook] Processing receipt: id=${update.id} status=${normalizedStatus}${update.error ? ` error=${update.error}` : ''}${update.raw?.errors ? ` errors=${JSON.stringify(update.raw.errors)}` : ''}`);
 
             const existingLog = await prisma.shipmentNotificationLog.findFirst({
                 where: {

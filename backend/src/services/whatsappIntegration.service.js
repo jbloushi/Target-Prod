@@ -2079,7 +2079,7 @@ www.target-kw.com | +965 6965 6563`;
 
             for (const cand of metaCandidates) {
                 if (failedPhoneNumberIds.has(cand.phoneNumberId)) continue;
-                const url = `https://graph.facebook.com/v19.0/${cand.phoneNumberId}/messages`;
+                const url = `https://graph.facebook.com/v21.0/${cand.phoneNumberId}/messages`;
 
                 for (let i = 0; i < candidateComponentSets.length; i++) {
                     const components = candidateComponentSets[i];
