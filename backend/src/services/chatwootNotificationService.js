@@ -1417,7 +1417,7 @@ class ChatwootNotificationService {
         const inbox = Array.isArray(inboxes)
             ? inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId) && item.source_id === phoneDigits) ||
               inboxes.find(item => String(item.inbox?.id || item.inbox_id) === String(cw.inboxId)) ||
-              inboxes[0]
+              (!inboxes.some(item => (item?.inbox?.id ?? item?.inbox_id) !== undefined) ? inboxes[0] : null)
             : null;
 
         let conversation = null;
@@ -1425,8 +1425,14 @@ class ChatwootNotificationService {
         // 1. Fetch contact's conversations directly from Chatwoot API
         try {
             const result = await this.request('get', `/api/v1/accounts/${cw.accountId}/contacts/${contactId}/conversations`);
-            const conversations = result?.payload || result?.data || result || [];
-            if (Array.isArray(conversations) && conversations.length > 0) {
+            const allConversations = result?.payload || result?.data || result || [];
+            const conversations = Array.isArray(allConversations)
+                ? allConversations.filter(conv => {
+                    const convInboxId = conv?.inbox_id ?? conv?.inbox?.id;
+                    return convInboxId === undefined || convInboxId === null || String(convInboxId) === String(cw.inboxId);
+                })
+                : [];
+            if (conversations.length > 0) {
                 const rankConversation = (conv) => {
                     const isMatchingInbox = String(conv.inbox_id || conv.inbox?.id) === String(cw.inboxId);
                     const isOpen = !['resolved', 'closed'].includes(conv.status);

@@ -66,7 +66,11 @@ async function run() {
         },
         orderBy: { createdAt: 'desc' }
     });
-    const shipments = rawShipments.filter((s) => !String(s.trackingNumber || '').toUpperCase().startsWith('DEMO'));
+    const shipments = rawShipments.filter((s) => {
+        const trk = String(s.trackingNumber || '').toUpperCase();
+        if (trk.startsWith('DEMO') || trk === 'DGR-DS10LTHVPTA0') return false;
+        return true;
+    });
 
     // 2. Fetch all shipper notification logs for these shipments
     const shipmentIds = shipments.map((s) => s.id);
@@ -110,23 +114,24 @@ async function run() {
         let genuineSuccess = null;
         let latestDetail = 'NO_LOG_CREATED';
         let existingLogId = sLogs[0]?.id || null;
+        let existingEventType = sLogs[0]?.eventType || 'shipment_created';
 
         for (const l of sLogs) {
             const cw = l.chatwootMessageId ? cwMsgMap.get(String(l.chatwootMessageId)) : null;
             const dbStatus = String(l.status || '').toUpperCase();
             if (cw) {
                 const isFailed = cw.status === 'failed' || Boolean(cw.error);
-                if (!isFailed && cw.hasWamid && ['delivered', 'read', 'sent'].includes(cw.status)) {
+                if (!isFailed && cw.hasWamid && ['delivered', 'read', 'sent'].includes(cw.status) && Number(cw.inboxId) === 2) {
                     genuineSuccess = { cwMsgId: l.chatwootMessageId, cwStatus: cw.status, inboxId: cw.inboxId };
                     break;
                 } else {
                     latestDetail = `CW[inb=${cw.inboxId},id=${l.chatwootMessageId}]: ${cw.status}${cw.error ? ` (${cw.error})` : ''}`;
                 }
-            } else if (['DELIVERED', 'READ'].includes(dbStatus) || (['SENT', 'SUBMITTED'].includes(dbStatus) && l.provider !== 'chatwoot')) {
-                genuineSuccess = { cwMsgId: l.chatwootMessageId || '-', cwStatus: dbStatus, inboxId: l.provider };
+            } else if (['DELIVERED', 'READ'].includes(dbStatus) || (['SENT', 'SUBMITTED'].includes(dbStatus) && l.provider !== 'chatwoot' && String(l.chatwootInboxId) === '2')) {
+                genuineSuccess = { cwMsgId: l.chatwootMessageId || '-', cwStatus: dbStatus, inboxId: l.chatwootInboxId || l.provider };
                 break;
             } else {
-                latestDetail = `DB[${l.provider || '-'}]: ${dbStatus}${l.errorMessage ? ` (${l.errorMessage.slice(0, 40)})` : ''}`;
+                latestDetail = `DB[${l.provider || '-'},inb=${l.chatwootInboxId || '-'}]: ${dbStatus}${l.errorMessage ? ` (${l.errorMessage.slice(0, 40)})` : ''}`;
             }
         }
 
@@ -147,7 +152,7 @@ async function run() {
         } else if (genuineSuccess) {
             alreadySentOk.push(row);
         } else {
-            toResend.push({ row, shipment: s, existingLogId });
+            toResend.push({ row, shipment: s, existingLogId, existingEventType });
         }
     }
 
@@ -190,9 +195,9 @@ async function run() {
     let failCount = 0;
 
     for (const item of targets) {
-        const { shipment, existingLogId, row } = item;
+        const { shipment, existingLogId, existingEventType, row } = item;
         try {
-            const res = await chatwootService.sendShipmentNotification('shipment_created', shipment, {
+            const res = await chatwootService.sendShipmentNotification(existingEventType || 'shipment_created', shipment, {
                 recipientRole: 'sender',
                 templateName: 'shipment_confirmation_2',
                 existingLogId,
