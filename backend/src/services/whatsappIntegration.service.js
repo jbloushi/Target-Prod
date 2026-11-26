@@ -1959,7 +1959,12 @@ www.target-kw.com | +965 6965 6563`;
                 rawCandidates.push({ phoneNumberId: pid, accessToken: tok, source: sourceLabel });
             };
 
-            // 1. Explicit WHATSAPP_FALLBACK_* env / config credentials
+            // 1. Chatwoot Inbox provider_config (phone_number_id + api_key) - Highest priority (matches active inbox WABA)
+            if (inboxMetaCfg?.phoneNumberId && inboxMetaCfg?.apiKey) {
+                pushCandidate(inboxMetaCfg.phoneNumberId, inboxMetaCfg.apiKey, 'CHATWOOT_INBOX_META');
+            }
+
+            // 2. Explicit WHATSAPP_FALLBACK_* env / config credentials
             const envFallbackPhoneId = process.env.WHATSAPP_FALLBACK_PHONE_NUMBER_ID
                 || config.whatsapp?.fallbackPhoneNumberId
                 || sysWhatsapp.fallbackPhoneNumberId;
@@ -1975,7 +1980,7 @@ www.target-kw.com | +965 6965 6563`;
                 pushCandidate(envFallbackPhoneId, sysWhatsapp.accessToken, 'WHATSAPP_FALLBACK+SYS_TOKEN');
             }
 
-            // 2. WhatsAppConfig DB (phoneId + apiKey / System User token)
+            // 3. WhatsAppConfig DB (phoneId + apiKey / System User token)
             const dbPhoneId = dbConfig?.phoneId && isNumericPhoneId(String(dbConfig.phoneId))
                 ? String(dbConfig.phoneId).trim()
                 : null;
@@ -1991,18 +1996,13 @@ www.target-kw.com | +965 6965 6563`;
                 pushCandidate(dbPhoneId, sysWhatsapp.accessToken, 'WHATSAPP_CONFIG+SYS_TOKEN');
             }
 
-            // 3. systemSettings.whatsapp / settings (phoneNumberId + accessToken)
+            // 4. systemSettings.whatsapp / settings (phoneNumberId + accessToken)
             const sysPhoneId = settings.phoneNumberId || sysWhatsapp.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
             const sysAccessToken = settings.accessToken || sysWhatsapp.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
             if (sysPhoneId) {
                 pushCandidate(sysPhoneId, sysAccessToken, 'SYSTEM_SETTINGS');
                 if (inboxMetaCfg?.apiKey) pushCandidate(sysPhoneId, inboxMetaCfg.apiKey, 'SYSTEM_SETTINGS+INBOX_TOKEN');
                 if (dbApiKey && /^EAA/i.test(dbApiKey)) pushCandidate(sysPhoneId, dbApiKey, 'SYSTEM_SETTINGS+DB_TOKEN');
-            }
-
-            // 4. Chatwoot Inbox provider_config (phone_number_id + api_key)
-            if (inboxMetaCfg?.phoneNumberId && inboxMetaCfg?.apiKey) {
-                pushCandidate(inboxMetaCfg.phoneNumberId, inboxMetaCfg.apiKey, 'CHATWOOT_INBOX_META');
             }
 
             const seenPairs = new Set();
