@@ -245,7 +245,40 @@ exports.getPublicShipment = async (req, res) => {
 /**
  * Receiver Location Pinning OTP Controllers
  */
-const locationOtpStore = new Map(); // trackingNumber -> { otp, expiresAt, verified, otpToken }
+const locationOtpStore = new Map(); // trackingNumber -> { otp, expiresAt, verified, otpToken, attempts }
+const MAX_LOCATION_OTP_ATTEMPTS = 5;
+
+const DESTINATION_DIAL_CODES = {
+    KW: '965',
+    KWT: '965',
+    KUWAIT: '965',
+    SA: '966',
+    SAU: '966',
+    KSA: '966',
+    AE: '971',
+    ARE: '971',
+    UAE: '971',
+    QA: '974',
+    QAT: '974',
+    BH: '973',
+    BHR: '973',
+    OM: '968',
+    OMN: '968',
+    EG: '20',
+    EGY: '20'
+};
+
+function resolveReceiverCountryDialCode(shipment) {
+    const explicitDial = shipment?.destination?.phoneCountryCode
+        || shipment?.documents?.receiverPhoneCountryCode
+        || shipment?.customerPhoneCountryCode;
+    if (explicitDial) {
+        const dialDigits = String(explicitDial).replace(/\D/g, '');
+        if (dialDigits) return dialDigits;
+    }
+    const isoCode = String(shipment?.destination?.countryCode || shipment?.destination?.country || '').trim().toUpperCase();
+    return DESTINATION_DIAL_CODES[isoCode] || '965';
+}
 
 exports.sendReceiverLocationOtp = async (req, res) => {
     try {
@@ -253,8 +286,8 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         const shipment = await prisma.shipment.findUnique({ where: { trackingNumber } });
         if (!shipment) return res.status(404).json({ success: false, error: 'Shipment not found' });
 
-        const phone = shipment.destination?.phone || shipment.customerPhone || shipment.origin?.phone;
-        const countryCode = shipment.destination?.phoneCountryCode || shipment.customerPhoneCountryCode || '20';
+        const phone = shipment.destination?.phone || shipment.documents?.receiverPhone || shipment.customerPhone || null;
+        const countryCode = resolveReceiverCountryDialCode(shipment);
         
         if (!phone) {
             return res.status(400).json({ success: false, error: 'No recipient phone number found on shipment' });
@@ -263,7 +296,7 @@ exports.sendReceiverLocationOtp = async (req, res) => {
         // Generate 6-digit OTP
         const otp = String(randomInt(100000, 1000000));
         const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
-        locationOtpStore.set(trackingNumber, { otp, expiresAt, verified: false });
+        locationOtpStore.set(trackingNumber, { otp, expiresAt, verified: false, attempts: 0 });
 
         // Dispatch OTP only through the approved authentication template.
         try {
@@ -309,7 +342,17 @@ exports.verifyReceiverLocationOtp = async (req, res) => {
             return res.status(400).json({ success: false, error: 'OTP has expired or was not requested. Please resend.' });
         }
 
-        if (record.otp !== String(otp).trim()) {
+        record.attempts = (record.attempts || 0) + 1;
+        if (record.attempts > MAX_LOCATION_OTP_ATTEMPTS) {
+            locationOtpStore.delete(trackingNumber);
+            return res.status(429).json({
+                success: false,
+                error: 'Too many failed verification attempts. Please request a new OTP.'
+            });
+        }
+
+        if (record.otp !== String(otp ?? '').trim()) {
+            locationOtpStore.set(trackingNumber, record);
             return res.status(400).json({ success: false, error: 'Invalid 6-digit verification code' });
         }
 

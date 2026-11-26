@@ -1892,8 +1892,9 @@ www.target-kw.com | +965 6965 6563`;
 
         const cleanPhone = String(resolvedPhone).replace(/\D/g, '');
         const dbConfig = await whatsAppConfigService.getConfig({ internal: true }).catch(() => null);
+        const sysWhatsapp = getSystemSettings()?.whatsapp || {};
         const settings = {
-            ...(getSystemSettings()?.whatsapp || {}),
+            ...sysWhatsapp,
             ...(dbConfig || {})
         };
         const provider = String(settings.provider || 'CHATWOOT').trim().toUpperCase();
@@ -1903,42 +1904,134 @@ www.target-kw.com | +965 6965 6563`;
 
         logger.info(`[WhatsApp OTP Dispatch] Template: ${templateName} [${langCode}] Target: ${maskPhoneForLog(cleanPhone)} Provider: ${provider}`);
 
-        // Chatwoot is template-capable only through its approved inbox template API.
-        if (provider === 'CHATWOOT') {
+        const ACCOUNT_OR_PHONE_META_ERROR_REGEX = /\b(131031|131042|131026|131056|141006)\b/;
+        const failedPhoneNumberIds = new Set();
+        let chatwootAttempted = false;
+        let metaAttempted = false;
+        let microserviceAttempted = false;
+
+        const isCleanSecret = (val) => typeof val === 'string' && val.trim().length > 0 && !val.includes('••••') && !val.includes('[redacted]');
+        const isNumericPhoneId = (val) => typeof val === 'string' && /^\d{6,25}$/.test(val.trim());
+
+        const attemptChatwootOtp = async () => {
+            if (chatwootAttempted) return null;
+            chatwootAttempted = true;
             try {
                 const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
-                if (result) return { ...result, status: String(result.status || '').toLowerCase() === 'failed' ? 'FAILED' : 'SUBMITTED', provider: 'CHATWOOT', templateName };
-                throw new Error('Inbox authentication template dispatch returned no message');
+                const statusLower = String(result?.status || '').toLowerCase();
+                if (!result || statusLower === 'failed' || result?.content_attributes?.external_error) {
+                    const extErr = result?.content_attributes?.external_error || 'Chatwoot OTP status reported failed';
+                    const err = new Error(`Chatwoot OTP dispatch failed: ${extErr}`);
+                    err.externalError = extErr;
+                    throw err;
+                }
+                return { ...result, status: 'SUBMITTED', provider: 'CHATWOOT', templateName };
             } catch (inboxErr) {
+                const combinedErrText = `${inboxErr.externalError || ''} ${inboxErr.message || ''}`;
+                if (ACCOUNT_OR_PHONE_META_ERROR_REGEX.test(combinedErrText)) {
+                    const errPhoneId = inboxErr.phoneNumberId
+                        || (typeof chatwootService.getInboxMetaConfig === 'function'
+                            ? (await chatwootService.getInboxMetaConfig().catch(() => null))?.phoneNumberId
+                            : null);
+                    if (errPhoneId) {
+                        failedPhoneNumberIds.add(String(errPhoneId).trim());
+                    }
+                }
                 logger.warn(`[WhatsApp OTP Inbox Template Error] ${inboxErr.message}`);
+                return null;
             }
-        }
+        };
 
-        // 1. Direct Meta WhatsApp Business API Cloud Endpoint (Most accurate for Authentication / Custom templates)
-        const templateProviderCandidates = [provider, fallbackProvider];
-        if (
-            (templateProviderCandidates.includes('META') || provider === 'META' || fallbackProvider === 'META') &&
-            settings.accessToken &&
-            settings.phoneNumberId
-        ) {
-            const url = `https://graph.facebook.com/v19.0/${settings.phoneNumberId}/messages`;
-            
+        const attemptDirectMetaOtp = async () => {
+            if (metaAttempted) return null;
+            metaAttempted = true;
+
+            const inboxMetaCfg = typeof chatwootService.getInboxMetaConfig === 'function'
+                ? await chatwootService.getInboxMetaConfig().catch(() => null)
+                : null;
+
+            const rawCandidates = [];
+            const pushCandidate = (phoneIdVal, tokenVal, sourceLabel) => {
+                if (!phoneIdVal || !isCleanSecret(tokenVal)) return;
+                const pid = String(phoneIdVal).trim();
+                const tok = String(tokenVal).trim();
+                if (!pid || !tok || pid.includes('••••')) return;
+                rawCandidates.push({ phoneNumberId: pid, accessToken: tok, source: sourceLabel });
+            };
+
+            // 1. Explicit WHATSAPP_FALLBACK_* env / config credentials
+            const envFallbackPhoneId = process.env.WHATSAPP_FALLBACK_PHONE_NUMBER_ID
+                || config.whatsapp?.fallbackPhoneNumberId
+                || sysWhatsapp.fallbackPhoneNumberId;
+            const envFallbackToken = process.env.WHATSAPP_FALLBACK_ACCESS_TOKEN
+                || config.whatsapp?.fallbackAccessToken
+                || sysWhatsapp.fallbackAccessToken;
+            if (envFallbackPhoneId) {
+                pushCandidate(envFallbackPhoneId, envFallbackToken, 'WHATSAPP_FALLBACK');
+                if (inboxMetaCfg?.apiKey) pushCandidate(envFallbackPhoneId, inboxMetaCfg.apiKey, 'WHATSAPP_FALLBACK+INBOX_TOKEN');
+                if (dbConfig?.apiKey && /^EAA/i.test(String(dbConfig.apiKey).trim())) {
+                    pushCandidate(envFallbackPhoneId, dbConfig.apiKey, 'WHATSAPP_FALLBACK+DB_TOKEN');
+                }
+                pushCandidate(envFallbackPhoneId, sysWhatsapp.accessToken, 'WHATSAPP_FALLBACK+SYS_TOKEN');
+            }
+
+            // 2. WhatsAppConfig DB (phoneId + apiKey / System User token)
+            const dbPhoneId = dbConfig?.phoneId && isNumericPhoneId(String(dbConfig.phoneId))
+                ? String(dbConfig.phoneId).trim()
+                : null;
+            const dbApiKey = dbConfig?.apiKey && isCleanSecret(String(dbConfig.apiKey))
+                ? String(dbConfig.apiKey).trim()
+                : null;
+            if (dbPhoneId) {
+                if (dbApiKey && (/^EAA/i.test(dbApiKey) || provider === 'META' || fallbackProvider === 'META')) {
+                    pushCandidate(dbPhoneId, dbApiKey, 'WHATSAPP_CONFIG');
+                }
+                if (inboxMetaCfg?.apiKey) pushCandidate(dbPhoneId, inboxMetaCfg.apiKey, 'WHATSAPP_CONFIG+INBOX_TOKEN');
+                pushCandidate(dbPhoneId, envFallbackToken, 'WHATSAPP_CONFIG+FALLBACK_TOKEN');
+                pushCandidate(dbPhoneId, sysWhatsapp.accessToken, 'WHATSAPP_CONFIG+SYS_TOKEN');
+            }
+
+            // 3. systemSettings.whatsapp / settings (phoneNumberId + accessToken)
+            const sysPhoneId = settings.phoneNumberId || sysWhatsapp.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+            const sysAccessToken = settings.accessToken || sysWhatsapp.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+            if (sysPhoneId) {
+                pushCandidate(sysPhoneId, sysAccessToken, 'SYSTEM_SETTINGS');
+                if (inboxMetaCfg?.apiKey) pushCandidate(sysPhoneId, inboxMetaCfg.apiKey, 'SYSTEM_SETTINGS+INBOX_TOKEN');
+                if (dbApiKey && /^EAA/i.test(dbApiKey)) pushCandidate(sysPhoneId, dbApiKey, 'SYSTEM_SETTINGS+DB_TOKEN');
+            }
+
+            // 4. Chatwoot Inbox provider_config (phone_number_id + api_key)
+            if (inboxMetaCfg?.phoneNumberId && inboxMetaCfg?.apiKey) {
+                pushCandidate(inboxMetaCfg.phoneNumberId, inboxMetaCfg.apiKey, 'CHATWOOT_INBOX_META');
+            }
+
+            const seenPairs = new Set();
+            const metaCandidates = [];
+            for (const cand of rawCandidates) {
+                if (failedPhoneNumberIds.has(cand.phoneNumberId)) continue;
+                const pairKey = `${cand.phoneNumberId}::${cand.accessToken}`;
+                if (seenPairs.has(pairKey)) continue;
+                seenPairs.add(pairKey);
+                metaCandidates.push(cand);
+            }
+
+            if (metaCandidates.length === 0) return null;
+
             const candidateComponentSets = [
-                // Set 1: Standard Body Parameter (Positional)
+                // Set 1 (Primary - formerly Set #4): Body positional + URL Button index '0'
                 [
                     {
                         type: 'body',
                         parameters: [{ type: 'text', text: String(otp) }]
-                    }
-                ],
-                // Set 2: Body Parameter (Named 'code')
-                [
+                    },
                     {
-                        type: 'body',
-                        parameters: [{ type: 'text', parameter_name: 'code', text: String(otp) }]
+                        type: 'button',
+                        sub_type: 'url',
+                        index: '0',
+                        parameters: [{ type: 'text', text: String(otp) }]
                     }
                 ],
-                // Set 3: Body + Copy Code Button (Meta Authentication standard)
+                // Set 2: Body + Copy Code Button (Meta coupon_code variant)
                 [
                     {
                         type: 'body',
@@ -1951,17 +2044,18 @@ www.target-kw.com | +965 6965 6563`;
                         parameters: [{ type: 'coupon_code', coupon_code: String(otp) }]
                     }
                 ],
-                // Set 4: Body + URL Button
+                // Set 3: Standard Body Parameter (Positional)
                 [
                     {
                         type: 'body',
                         parameters: [{ type: 'text', text: String(otp) }]
-                    },
+                    }
+                ],
+                // Set 4: Body Parameter (Named 'code')
+                [
                     {
-                        type: 'button',
-                        sub_type: 'url',
-                        index: '0',
-                        parameters: [{ type: 'text', text: String(otp) }]
+                        type: 'body',
+                        parameters: [{ type: 'text', parameter_name: 'code', text: String(otp) }]
                     }
                 ],
                 // Set 5: Pure Copy Code Button without body param
@@ -1975,44 +2069,71 @@ www.target-kw.com | +965 6965 6563`;
                 ]
             ];
 
-            for (let i = 0; i < candidateComponentSets.length; i++) {
-                const components = candidateComponentSets[i];
-                const payload = {
-                    messaging_product: 'whatsapp',
-                    recipient_type: 'individual',
-                    to: cleanPhone,
-                    type: 'template',
-                    template: {
-                        name: templateName,
-                        language: { code: langCode },
-                        components
+            for (const cand of metaCandidates) {
+                if (failedPhoneNumberIds.has(cand.phoneNumberId)) continue;
+                const url = `https://graph.facebook.com/v19.0/${cand.phoneNumberId}/messages`;
+
+                for (let i = 0; i < candidateComponentSets.length; i++) {
+                    const components = candidateComponentSets[i];
+                    const payload = {
+                        messaging_product: 'whatsapp',
+                        recipient_type: 'individual',
+                        to: cleanPhone,
+                        type: 'template',
+                        template: {
+                            name: templateName,
+                            language: { code: langCode },
+                            components
+                        }
+                    };
+
+                    try {
+                        const res = await axios.post(url, payload, {
+                            headers: {
+                                Authorization: `Bearer ${cand.accessToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            timeout: 12000
+                        });
+
+                        const wamid = res.data?.messages?.[0]?.id || null;
+                        logger.info(`[WhatsApp Meta API OTP Sent] Template '${templateName}' sent to ${maskPhoneForLog(cleanPhone)} (Payload Set ${i + 1}, source=${cand.source}). WAMID: ${wamid}`);
+                        return { status: 'SENT', externalMessageId: wamid, provider: 'META', templateName };
+                    } catch (metaErr) {
+                        const httpStatus = metaErr.response?.status || metaErr.status || 0;
+                        const metaErrObj = metaErr.response?.data?.error || {};
+                        const metaCode = Number(metaErrObj.code || 0);
+                        const errorDetail = metaErrObj.message || metaErr.message || '';
+                        logger.warn(`[WhatsApp Meta API OTP Candidate ${i + 1} Failed] (source=${cand.source}, status=${httpStatus || 'ERR'}, code=${metaCode || 'N/A'}) ${errorDetail}`);
+
+                        if (
+                            [131031, 131042, 131026, 131056, 141006, 100].includes(metaCode) ||
+                            ACCOUNT_OR_PHONE_META_ERROR_REGEX.test(errorDetail)
+                        ) {
+                            failedPhoneNumberIds.add(cand.phoneNumberId);
+                        }
+
+                        const isNonTemplateError =
+                            [190, 131031, 131042, 131026, 131056, 141006, 100, 10, 200, 803, 132001].includes(metaCode) ||
+                            /\b(190|131031|131042|131026|131056|141006|100)\b/.test(errorDetail) ||
+                            httpStatus === 401 ||
+                            httpStatus === 403 ||
+                            (httpStatus >= 500 && httpStatus < 600) ||
+                            ['ETIMEDOUT', 'ECONNABORTED', 'ECONNREFUSED', 'ENOTFOUND', 'ENETUNREACH'].includes(metaErr.code) ||
+                            /timeout|Business Account locked|Invalid OAuth|Unsupported post request/i.test(errorDetail);
+
+                        if (isNonTemplateError) {
+                            break;
+                        }
                     }
-                };
-
-                try {
-                    const res = await axios.post(url, payload, {
-                        headers: {
-                            Authorization: `Bearer ${settings.accessToken}`,
-                            'Content-Type': 'application/json'
-                        },
-                        timeout: 12000
-                    });
-
-                    const wamid = res.data?.messages?.[0]?.id || null;
-                    logger.info(`[WhatsApp Meta API OTP Sent] Template '${templateName}' sent to ${maskPhoneForLog(cleanPhone)} (Payload Set ${i + 1}). WAMID: ${wamid}`);
-                    return { status: 'SENT', externalMessageId: wamid, provider: 'META' };
-                } catch (metaErr) {
-                    const errorDetail = metaErr.response?.data?.error?.message || metaErr.message;
-                    logger.warn(`[WhatsApp Meta API OTP Candidate ${i + 1} Failed] ${errorDetail}`);
                 }
             }
-        }
+            return null;
+        };
 
-        // 2. Shipment-WhatsApp Microservice Dispatch (https://msg.target-kw.com)
-        const templateMicroserviceProvider = [provider, fallbackProvider].find(candidate =>
-            candidate === 'SHIPMENT_WHATSAPP' || candidate === 'TARGET_MSG'
-        );
-        if (templateMicroserviceProvider) {
+        const attemptMicroserviceOtp = async () => {
+            if (microserviceAttempted) return null;
+            microserviceAttempted = true;
             const serviceUrl = settings.serviceUrl || 'https://msg.target-kw.com';
             try {
                 const res = await sendViaShipmentWhatsappMicroservice({
@@ -2021,18 +2142,54 @@ www.target-kw.com | +965 6965 6563`;
                     language: langCode,
                     toPhone: cleanPhone,
                     variables: [String(otp)],
+                    buttonUrlParam: String(otp),
                     apiKey: settings.apiKey || null
                 });
+                const resStatusUpper = String(res?.status || '').toUpperCase();
+                if (!res || ['SKIPPED', 'FAILED'].includes(resStatusUpper)) {
+                    logger.warn(`[WhatsApp OTP Microservice Non-Sent] Status=${resStatusUpper || 'EMPTY'}`);
+                    return null;
+                }
                 logger.info(`[WhatsApp OTP Sent via Microservice] Message ID: ${res.messageId}`);
                 return { ...res, provider: 'SHIPMENT_WHATSAPP', templateName };
             } catch (microErr) {
                 logger.warn(`[WhatsApp OTP Microservice Error] ${microErr.message}`);
+                return null;
             }
+        };
+
+        // 1. Primary provider dispatch
+        if (provider === 'CHATWOOT') {
+            const cwRes = await attemptChatwootOtp();
+            if (cwRes) return cwRes;
+        } else if (provider === 'META') {
+            const metaRes = await attemptDirectMetaOtp();
+            if (metaRes) return metaRes;
+        } else if (provider === 'SHIPMENT_WHATSAPP' || provider === 'TARGET_MSG') {
+            const microRes = await attemptMicroserviceOtp();
+            if (microRes) return microRes;
         }
 
-        if (fallbackProvider === 'CHATWOOT' && provider !== 'CHATWOOT') {
-            const result = await chatwootService.sendDirectOtp({ phone: resolvedPhone, name, otp });
-            if (result) return { ...result, status: String(result.status || '').toLowerCase() === 'failed' ? 'FAILED' : 'SUBMITTED', provider: 'CHATWOOT', templateName };
+        // 2. Fallback chain across remaining template-capable providers
+        if (fallbackProvider === 'CHATWOOT') {
+            const cwFb = await attemptChatwootOtp();
+            if (cwFb) return cwFb;
+        }
+
+        const metaFb = await attemptDirectMetaOtp();
+        if (metaFb) return metaFb;
+
+        if (!chatwootAttempted) {
+            const cwRemaining = await attemptChatwootOtp();
+            if (cwRemaining) return cwRemaining;
+        }
+
+        const shouldTryMicroservice = [provider, fallbackProvider].some(
+            candidate => candidate === 'SHIPMENT_WHATSAPP' || candidate === 'TARGET_MSG'
+        );
+        if (shouldTryMicroservice) {
+            const microFb = await attemptMicroserviceOtp();
+            if (microFb) return microFb;
         }
 
         // Evolution /sendText and free-text Chatwoot/direct sends are not approved OTP templates.

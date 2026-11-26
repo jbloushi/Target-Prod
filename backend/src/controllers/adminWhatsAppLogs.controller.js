@@ -1,10 +1,20 @@
 const { prisma } = require('../config/database');
+const config = require('../config/config');
 const whatsappService = require('../services/whatsappIntegration.service');
 const chatwootNotificationService = require('../services/chatwootNotificationService');
 const whatsAppConfigService = require('../services/whatsAppConfig.service');
 const { canAccessShipment } = require('../middleware/authorize.middleware');
 const { hasCapability } = require('../middleware/rbac.policy');
 const logger = require('../utils/logger');
+
+function parseChatwootMessageTimestamp(value) {
+    if (value === undefined || value === null || value === '') return new Date();
+    const numeric = Number(value);
+    const parsed = Number.isFinite(numeric)
+        ? new Date(String(value).trim().length <= 10 ? numeric * 1000 : numeric)
+        : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
 
 /**
  * GET /api/admin/whatsapp/logs
@@ -48,7 +58,7 @@ async function getNotificationLogs(req, res) {
             } else if (p === 'META') {
                 where.provider = 'META';
             } else if (p === 'CHATWOOT') {
-                where.provider = 'chatwoot';
+                where.provider = { in: ['chatwoot', 'CHATWOOT'] };
             } else {
                 where.provider = provider;
             }
@@ -407,6 +417,7 @@ async function syncMicroserviceTelemetry(req, res) {
         const adminToken = process.env.ADMIN_TOKEN || 'target-admin-secret-token-2026';
 
         let microMessages = [];
+        let microFetchError = null;
         try {
             const resp = await axios.get(`${serviceUrl}/api/stats/messages`, {
                 params: { limit: 500 },
@@ -418,11 +429,12 @@ async function syncMicroserviceTelemetry(req, res) {
             });
             microMessages = resp.data?.messages || [];
         } catch (fetchErr) {
+            microFetchError = fetchErr;
             logger.warn(`[Sync Telemetry] Could not fetch messages from microservice: ${fetchErr.message}`);
-            return res.status(502).json({ error: `Could not reach WhatsApp microservice: ${fetchErr.message}` });
         }
 
         let updatedCount = 0;
+        let microserviceUpdatedCount = 0;
         for (const msg of microMessages) {
             if (!msg.wamid) continue;
 
@@ -474,13 +486,135 @@ async function syncMicroserviceTelemetry(req, res) {
                     }
                 });
                 updatedCount++;
+                microserviceUpdatedCount++;
+            }
+        }
+
+        // Reconcile up to the last 50 recent Chatwoot logs still in SENT/SUBMITTED state
+        let chatwootLogs = [];
+        if (typeof prisma.shipmentNotificationLog?.findMany === 'function') {
+            chatwootLogs = await prisma.shipmentNotificationLog.findMany({
+                where: {
+                    provider: { in: ['chatwoot', 'CHATWOOT'] },
+                    status: { in: ['SENT', 'sent', 'SUBMITTED', 'submitted'] },
+                    chatwootConversationId: { not: null },
+                    chatwootMessageId: { not: null }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 50
+            }) || [];
+        }
+
+        const validChatwootLogs = chatwootLogs.filter(
+            (log) => log && log.chatwootConversationId && log.chatwootMessageId
+        );
+
+        if (microFetchError && validChatwootLogs.length === 0) {
+            return res.status(502).json({ error: `Could not reach WhatsApp microservice: ${microFetchError.message}` });
+        }
+
+        let chatwootUpdatedCount = 0;
+        if (validChatwootLogs.length > 0 && typeof chatwootNotificationService?.request === 'function') {
+            const groupsByConv = new Map();
+            for (const log of validChatwootLogs) {
+                const accountId = String(log.chatwootAccountId || config.chatwoot?.accountId || '1').trim() || '1';
+                const convId = String(log.chatwootConversationId).trim();
+                const groupKey = `${accountId}:${convId}`;
+                if (!groupsByConv.has(groupKey)) {
+                    groupsByConv.set(groupKey, { accountId, convId, logs: [] });
+                }
+                groupsByConv.get(groupKey).logs.push(log);
+            }
+
+            const CHATWOOT_SYNC_MAP = {
+                failed: 'FAILED',
+                delivered: 'DELIVERED',
+                read: 'READ'
+            };
+
+            for (const { accountId, convId, logs: convLogs } of groupsByConv.values()) {
+                let cwMessages = [];
+                try {
+                    const cwRes = await chatwootNotificationService.request(
+                        'get',
+                        `/api/v1/accounts/${accountId}/conversations/${convId}/messages`
+                    );
+                    cwMessages = Array.isArray(cwRes?.payload)
+                        ? cwRes.payload
+                        : Array.isArray(cwRes?.data?.payload)
+                            ? cwRes.data.payload
+                            : Array.isArray(cwRes?.data)
+                                ? cwRes.data
+                                : Array.isArray(cwRes)
+                                    ? cwRes
+                                    : [];
+                } catch (cwErr) {
+                    logger.warn(`[Sync Telemetry] Could not fetch Chatwoot messages for conv ${convId}: ${cwErr.message}`);
+                    continue;
+                }
+
+                if (cwMessages.length === 0) continue;
+
+                for (const log of convLogs) {
+                    const matched = cwMessages.find((m) => m && String(m.id) === String(log.chatwootMessageId));
+                    if (!matched) continue;
+
+                    const externalError = matched.content_attributes?.external_error || matched.external_error || null;
+                    const rawCwStatus = String(
+                        matched.status || matched.content_attributes?.status || (externalError ? 'failed' : '')
+                    ).trim().toLowerCase();
+                    const nextCwStatus = CHATWOOT_SYNC_MAP[rawCwStatus] || (externalError ? 'FAILED' : null);
+                    if (!nextCwStatus) continue;
+
+                    const tsIso = parseChatwootMessageTimestamp(matched.updated_at || matched.created_at).toISOString();
+                    const existingResp = (log.responseJson && typeof log.responseJson === 'object' && !Array.isArray(log.responseJson))
+                        ? log.responseJson
+                        : {};
+                    const updatedResp = { ...existingResp, chatwootStatusUpdatedAt: tsIso };
+
+                    if (matched.source_id) {
+                        updatedResp.source_id = String(matched.source_id);
+                        updatedResp.wamid = existingResp.wamid || String(matched.source_id);
+                    }
+                    if (externalError) {
+                        const existingAttrs = (existingResp.content_attributes && typeof existingResp.content_attributes === 'object')
+                            ? existingResp.content_attributes
+                            : {};
+                        updatedResp.content_attributes = { ...existingAttrs, external_error: String(externalError) };
+                    }
+                    if (nextCwStatus === 'DELIVERED') {
+                        updatedResp.deliveredAt = existingResp.deliveredAt || tsIso;
+                    } else if (nextCwStatus === 'READ') {
+                        updatedResp.readAt = existingResp.readAt || tsIso;
+                        updatedResp.deliveredAt = existingResp.deliveredAt || tsIso;
+                    } else if (nextCwStatus === 'FAILED') {
+                        updatedResp.failedAt = existingResp.failedAt || tsIso;
+                    }
+
+                    await prisma.shipmentNotificationLog.update({
+                        where: { id: log.id },
+                        data: {
+                            status: nextCwStatus,
+                            responseJson: updatedResp,
+                            ...(nextCwStatus === 'FAILED' && externalError
+                                ? { errorMessage: String(externalError).slice(0, 1000) }
+                                : {})
+                        }
+                    });
+                    updatedCount++;
+                    chatwootUpdatedCount++;
+                }
             }
         }
 
         return res.json({
             success: true,
             totalFromMicroservice: microMessages.length,
+            chatwootCheckedCount: validChatwootLogs.length,
+            microserviceUpdatedCount,
+            chatwootUpdatedCount,
             updatedCount,
+            ...(microFetchError ? { microserviceWarning: microFetchError.message } : {}),
             message: `Successfully synchronized telemetry: ${updatedCount} records updated.`
         });
     } catch (err) {

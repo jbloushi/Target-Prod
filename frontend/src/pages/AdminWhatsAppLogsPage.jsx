@@ -250,7 +250,7 @@ export const AdminWhatsAppLogsPage = () => {
     };
 
     const getStatusBadge = (status) => {
-        const s = (status || '').toUpperCase();
+        const s = String(status || '').trim().toUpperCase();
         switch (s) {
             case 'DELIVERED':
                 return { badgeClass: 'badge-success text-white', label: lang === 'ar' ? 'تم التوصيل' : 'Delivered', icon: 'done_all' };
@@ -643,7 +643,13 @@ export const AdminWhatsAppLogsPage = () => {
                                 </tr>
                             ) : (
                                 logs.map((log) => {
-                                    const badge = getStatusBadge(log.status);
+                                    const statusUpper = String(log.status || '').trim().toUpperCase();
+                                    const failureReason =
+                                        log.errorMessage ||
+                                        log.responseJson?.content_attributes?.external_error ||
+                                        log.responseJson?.external_error ||
+                                        null;
+                                    const badge = getStatusBadge(statusUpper);
                                     const prov = getProviderBadge(log.provider);
                                     const isSender = (log.recipientRole || '').toLowerCase() === 'sender';
                                     const cleanPhone = (log.recipientPhone || '').replace(/[^0-9]/g, '');
@@ -738,9 +744,9 @@ export const AdminWhatsAppLogsPage = () => {
                                                     <span className="material-symbols-outlined text-[13px]">{badge.icon}</span>
                                                     {badge.label}
                                                 </span>
-                                                {log.status === 'FAILED' && log.errorMessage && (
-                                                    <div className="text-[10px] text-error font-medium mt-1 max-w-[160px] truncate mx-auto" title={log.errorMessage}>
-                                                        ⚠️ {log.errorMessage}
+                                                {statusUpper === 'FAILED' && failureReason && (
+                                                    <div className="text-[10px] text-error font-medium mt-1 max-w-[160px] truncate mx-auto" title={failureReason}>
+                                                        ⚠️ {failureReason}
                                                     </div>
                                                 )}
                                             </td>
@@ -758,27 +764,64 @@ export const AdminWhatsAppLogsPage = () => {
                                                 </button>
                                             </td>
 
-                                            {/* Delivery Lifecycle (Sent / Delivered / Read) */}
+                                            {/* Delivery Lifecycle (Sent / Delivered / Read / Failed) */}
                                             <td className="font-mono text-[11px] min-w-[140px]">
-                                                <div className="flex items-center gap-1.5 text-base-content/80" title="Sent to WhatsApp Gateway">
-                                                    <span className="material-symbols-outlined text-[13px] text-base-content/50">done</span>
-                                                    <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '—'}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 mt-0.5" title="Delivered to Handset">
-                                                    {deliveredAt ? (
-                                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-[13px]">done_all</span>
-                                                            {new Date(deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-base-content/30 text-[10px] ms-4">— Pending</span>
-                                                    )}
-                                                </div>
-                                                {readAt && (
-                                                    <div className="flex items-center gap-1.5 mt-0.5 text-cyan-600 dark:text-cyan-400 font-bold" title="Read by Recipient">
-                                                        <span className="material-symbols-outlined text-[13px] text-[#53bdeb]">done_all</span>
-                                                        <span>{new Date(readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}</span>
+                                                {statusUpper === 'FAILED' ? (
+                                                    <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-1.5 text-error font-bold" title="Delivery Failed">
+                                                            <span className="material-symbols-outlined text-[13px]">error</span>
+                                                            <span>{lang === 'ar' ? 'فشل' : 'Failed'}</span>
+                                                            {(log.updatedAt || log.createdAt) && (
+                                                                <span className="text-[10px] font-normal text-error/80">
+                                                                    {new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {failureReason && (
+                                                            <div className="text-[10px] text-error/90 font-sans max-w-[190px] truncate" title={failureReason}>
+                                                                {failureReason}
+                                                            </div>
+                                                        )}
                                                     </div>
+                                                ) : ['QUEUED', 'PENDING'].includes(statusUpper) ? (
+                                                    <div className="flex items-center gap-1.5 text-warning font-semibold" title="Queued for Dispatch">
+                                                        <span className="material-symbols-outlined text-[13px]">schedule</span>
+                                                        <span>{lang === 'ar' ? 'في الانتظار' : 'Queued'}</span>
+                                                    </div>
+                                                ) : statusUpper === 'SKIPPED' ? (
+                                                    <div className="flex items-center gap-1.5 text-base-content/50 font-semibold" title="Dispatch Skipped">
+                                                        <span className="material-symbols-outlined text-[13px]">block</span>
+                                                        <span>{lang === 'ar' ? 'تم التخطي' : 'Skipped'}</span>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex items-center gap-1.5 text-base-content/80" title="Sent to WhatsApp Gateway">
+                                                            <span className="material-symbols-outlined text-[13px] text-base-content/50">done</span>
+                                                            <span>{log.sentAt || log.createdAt ? new Date(log.sentAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' }) : '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 mt-0.5" title="Delivered to Handset">
+                                                            {deliveredAt || statusUpper === 'DELIVERED' || statusUpper === 'READ' ? (
+                                                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                                                    <span className="material-symbols-outlined text-[13px]">done_all</span>
+                                                                    {deliveredAt
+                                                                        ? new Date(deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })
+                                                                        : (lang === 'ar' ? 'تم التوصيل' : 'Delivered')}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-base-content/30 text-[10px] ms-4">— Pending</span>
+                                                            )}
+                                                        </div>
+                                                        {(readAt || statusUpper === 'READ') && (
+                                                            <div className="flex items-center gap-1.5 mt-0.5 text-cyan-600 dark:text-cyan-400 font-bold" title="Read by Recipient">
+                                                                <span className="material-symbols-outlined text-[13px] text-[#53bdeb]">done_all</span>
+                                                                <span>
+                                                                    {readAt
+                                                                        ? new Date(readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })
+                                                                        : (lang === 'ar' ? 'تمت القراءة' : 'Read')}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </>
                                                 )}
                                             </td>
 
@@ -844,7 +887,7 @@ export const AdminWhatsAppLogsPage = () => {
                                                     </button>
 
                                                     {/* Resend Action */}
-                                                    {log.status === 'FAILED' && (
+                                                    {statusUpper === 'FAILED' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => handleResend(log.id)}
@@ -922,6 +965,12 @@ export const AdminWhatsAppLogsPage = () => {
                     </div>
 
                     {selectedLog && (() => {
+                        const selectedStatusUpper = String(selectedLog.status || '').trim().toUpperCase();
+                        const selectedFailureReason =
+                            selectedLog.errorMessage ||
+                            selectedLog.responseJson?.content_attributes?.external_error ||
+                            selectedLog.responseJson?.external_error ||
+                            null;
                         const isSender = (selectedLog.recipientRole || '').toLowerCase() === 'sender';
                         const payload = selectedLog.payloadJson || {};
                         const audit = payload.auditMetadata || {};
@@ -990,9 +1039,11 @@ export const AdminWhatsAppLogsPage = () => {
                                         </div>
                                         <div className="flex items-center justify-end gap-1 text-[10px] text-[#667781] dark:text-emerald-300/60 pt-1">
                                             <span>{new Date(selectedLog.sentAt || selectedLog.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                            {selectedLog.responseJson?.readAt ? (
+                                            {selectedStatusUpper === 'FAILED' ? (
+                                                <span className="material-symbols-outlined text-[14px] text-error">error</span>
+                                            ) : selectedLog.responseJson?.readAt || selectedStatusUpper === 'READ' ? (
                                                 <span className="material-symbols-outlined text-[14px] text-[#53bdeb]">done_all</span>
-                                            ) : selectedLog.responseJson?.deliveredAt ? (
+                                            ) : selectedLog.responseJson?.deliveredAt || selectedStatusUpper === 'DELIVERED' ? (
                                                 <span className="material-symbols-outlined text-[14px] text-[#667781]">done_all</span>
                                             ) : (
                                                 <span className="material-symbols-outlined text-[14px] text-[#8696a0]">done</span>

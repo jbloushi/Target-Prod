@@ -9,6 +9,7 @@ const { normalizeStatus, isStatusAhead, isTerminalStatus, isNegativeOrExceptionP
 // Chatwoot message statuses that map to our log statuses
 const CHATWOOT_STATUS_MAP = {
     sent: 'SENT',
+    submitted: 'SENT',
     delivered: 'DELIVERED',
     read: 'READ',
     failed: 'FAILED',
@@ -23,11 +24,45 @@ function parseChatwootTimestamp(value) {
     return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
-function shouldApplyChatwootStatus(currentStatus, nextStatus) {
-    const current = String(currentStatus || '').toUpperCase();
-    if (current === 'READ' || current === 'FAILED') return false;
+function shouldApplyChatwootStatus(currentStatus, nextStatus, { currentErrorMessage = null, nextExternalError = null } = {}) {
+    const current = String(currentStatus || '').trim().toUpperCase();
+    if (current === 'READ') return false;
+    if (current === 'FAILED') {
+        return nextStatus === 'FAILED' && (currentStatus !== 'FAILED' || (!currentErrorMessage && Boolean(nextExternalError)));
+    }
     if (current === 'DELIVERED' && ['SENT', 'SUBMITTED'].includes(nextStatus)) return false;
     return true;
+}
+
+function verifyChatwootSignature(req, webhookSecret) {
+    const rawSignature = String(req.headers['x-chatwoot-signature'] || '').trim();
+    if (!rawSignature) return false;
+
+    const cleanSignature = rawSignature.replace(/^sha256=/i, '');
+    const sigBuf = Buffer.from(cleanSignature);
+
+    const rawBody = req.rawBody !== undefined && req.rawBody !== null
+        ? (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody))
+        : '';
+
+    const timestamp = String(req.headers['x-chatwoot-timestamp'] ?? '').trim();
+    if (timestamp) {
+        const expectedV4 = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(`${timestamp}.${rawBody}`)
+            .digest('hex');
+        const expV4Buf = Buffer.from(expectedV4);
+        if (sigBuf.length === expV4Buf.length && crypto.timingSafeEqual(sigBuf, expV4Buf)) {
+            return true;
+        }
+    }
+
+    const expectedRaw = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawBody)
+        .digest('hex');
+    const expRawBuf = Buffer.from(expectedRaw);
+    return sigBuf.length === expRawBuf.length && crypto.timingSafeEqual(sigBuf, expRawBuf);
 }
 
 const safeTimingEqual = (left = '', right = '') => {
@@ -154,22 +189,28 @@ exports.handleChatwootWebhook = async (req, res) => {
             logger.warn('[chatwoot-webhook] Webhook secret not configured on server - failing closed');
             return res.status(401).json({ ok: false, error: 'Webhook secret is not configured' });
         }
-    } else {
-        const signature = req.headers['x-chatwoot-signature'] || '';
-        const expected = crypto.createHmac('sha256', webhookSecret).update(req.rawBody || '').digest('hex');
-        const sigBuf = Buffer.from(signature);
-        const expBuf = Buffer.from(expected);
-        if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-            logger.warn('[chatwoot-webhook] invalid signature — request rejected');
-            return res.status(401).json({ ok: false, error: 'Invalid webhook signature' });
-        }
+    } else if (!verifyChatwootSignature(req, webhookSecret)) {
+        logger.warn('[chatwoot-webhook] invalid signature — request rejected');
+        return res.status(401).json({ ok: false, error: 'Invalid webhook signature' });
     }
 
     const body = req.body || {};
     const event = body.event || body.data?.event;
     const messageIdValue = body.id || body.message?.id || body.data?.id;
     const messageId = messageIdValue ? String(messageIdValue) : null;
-    const rawStatus = body.content_attributes?.status || body.status || body.message?.status || body.data?.status;
+    const externalError =
+        body.content_attributes?.external_error ||
+        body.message?.content_attributes?.external_error ||
+        body.external_error ||
+        body.errors?.[0]?.message ||
+        null;
+    const sourceId = body.source_id || body.message?.source_id || null;
+    const rawStatus =
+        body.content_attributes?.status ||
+        body.status ||
+        body.message?.content_attributes?.status ||
+        body.message?.status ||
+        body.data?.status;
 
     logger.info(`[chatwoot-webhook] received event=${event} status=${rawStatus}`);
 
@@ -178,44 +219,73 @@ exports.handleChatwootWebhook = async (req, res) => {
         return res.status(200).json({ ok: true, ignored: true });
     }
 
-    if (!messageId) {
+    if (!messageId && !sourceId) {
         logger.warn('[chatwoot-webhook] message_updated missing id field');
         return res.status(200).json({ ok: true, ignored: true });
     }
 
-    const accountId = String(body.account?.id || '');
+    const accountId = String(body.account?.id ?? body.account_id ?? body.conversation?.account_id ?? '');
     const expectedAccountId = String(config.chatwoot?.accountId || '');
-    if (expectedAccountId && accountId !== expectedAccountId) {
+    if (expectedAccountId && accountId && accountId !== expectedAccountId) {
+        logger.warn('[chatwoot-webhook] account mismatch — message update ignored');
+        return res.status(200).json({ ok: true, ignored: true });
+    }
+    if (expectedAccountId && !accountId && body.account !== undefined) {
         logger.warn('[chatwoot-webhook] account mismatch — message update ignored');
         return res.status(200).json({ ok: true, ignored: true });
     }
 
-    const mappedStatus = CHATWOOT_STATUS_MAP[String(rawStatus || '').trim().toLowerCase()];
+    const normalizedRawStatus = String(rawStatus || (externalError ? 'failed' : '')).trim().toLowerCase();
+    const mappedStatus = CHATWOOT_STATUS_MAP[normalizedRawStatus];
     if (!mappedStatus) {
         logger.info(`[chatwoot-webhook] unmapped status "${rawStatus}" — no update`);
         return res.status(200).json({ ok: true, ignored: true });
     }
 
     try {
+        const whereClause = messageId && sourceId
+            ? { OR: [{ chatwootMessageId: messageId }, { chatwootMessageId: String(sourceId) }] }
+            : { chatwootMessageId: messageId || String(sourceId) };
         const logs = await prisma.shipmentNotificationLog.findMany({
-            where: { chatwootMessageId: messageId },
-            select: { id: true, status: true, responseJson: true }
+            where: whereClause,
+            select: { id: true, status: true, errorMessage: true, responseJson: true }
         });
-        const timestamp = parseChatwootTimestamp(body.updated_at || body.timestamp || body.created_at);
+        const timestamp = parseChatwootTimestamp(
+            body.updated_at || body.message?.updated_at || body.timestamp || body.created_at || body.message?.created_at
+        );
         const timestampIso = timestamp.toISOString();
-        const errorMessage = body.external_error || body.content_attributes?.external_error || body.errors?.[0]?.message || null;
         let updatedCount = 0;
 
         for (const log of logs) {
-            if (!shouldApplyChatwootStatus(log.status, mappedStatus)) continue;
+            if (!shouldApplyChatwootStatus(log.status, mappedStatus, {
+                currentErrorMessage: log.errorMessage,
+                nextExternalError: externalError
+            })) {
+                continue;
+            }
             const responseJson = log.responseJson && typeof log.responseJson === 'object' && !Array.isArray(log.responseJson)
                 ? log.responseJson
                 : {};
             const nextResponseJson = { ...responseJson, chatwootStatusUpdatedAt: timestampIso };
-            if (mappedStatus === 'DELIVERED') nextResponseJson.deliveredAt = responseJson.deliveredAt || timestampIso;
+            if (sourceId) {
+                nextResponseJson.source_id = String(sourceId);
+                nextResponseJson.wamid = responseJson.wamid || String(sourceId);
+            }
+            if (externalError) {
+                const existingAttrs = responseJson.content_attributes && typeof responseJson.content_attributes === 'object'
+                    ? responseJson.content_attributes
+                    : {};
+                nextResponseJson.content_attributes = { ...existingAttrs, external_error: String(externalError) };
+            }
+            if (mappedStatus === 'DELIVERED') {
+                nextResponseJson.deliveredAt = responseJson.deliveredAt || timestampIso;
+            }
             if (mappedStatus === 'READ') {
                 nextResponseJson.readAt = responseJson.readAt || timestampIso;
                 nextResponseJson.deliveredAt = responseJson.deliveredAt || timestampIso;
+            }
+            if (mappedStatus === 'FAILED') {
+                nextResponseJson.failedAt = responseJson.failedAt || timestampIso;
             }
 
             await prisma.shipmentNotificationLog.update({
@@ -223,7 +293,7 @@ exports.handleChatwootWebhook = async (req, res) => {
                 data: {
                     status: mappedStatus,
                     responseJson: nextResponseJson,
-                    ...(mappedStatus === 'FAILED' && errorMessage ? { errorMessage: String(errorMessage).slice(0, 1000) } : {})
+                    ...(mappedStatus === 'FAILED' && externalError ? { errorMessage: String(externalError).slice(0, 1000) } : {})
                 }
             });
             updatedCount += 1;

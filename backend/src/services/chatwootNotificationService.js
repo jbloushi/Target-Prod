@@ -144,6 +144,25 @@ let cachedInboxTemplates = {
     expiresAt: 0
 };
 
+let cachedInboxMetaConfig = {
+    inboxId: null,
+    config: null,
+    expiresAt: 0
+};
+
+function extractInboxMetaConfig(inbox) {
+    const pc = inbox?.provider_config || {};
+    const phoneNumberId = pc.phone_number_id || inbox?.phone_number_id || null;
+    const businessAccountId = pc.business_account_id || inbox?.business_account_id || null;
+    const apiKey = pc.api_key || pc.access_token || null;
+    if (!phoneNumberId && !businessAccountId && !apiKey) return null;
+    return {
+        phoneNumberId: phoneNumberId ? String(phoneNumberId).trim() : null,
+        businessAccountId: businessAccountId ? String(businessAccountId).trim() : null,
+        apiKey: apiKey ? String(apiKey).trim() : null
+    };
+}
+
 function resolveShipmentInvoiceReference(shipment, trackingNumber) {
     const documents = shipment?.documents && typeof shipment.documents === 'object' ? shipment.documents : {};
     const customsInvoice = shipment?.customsInvoice && typeof shipment.customsInvoice === 'object'
@@ -667,7 +686,7 @@ function sanitizeForLog(value) {
     const scrub = (obj) => {
         if (!obj || typeof obj !== 'object') return;
         Object.keys(obj).forEach((key) => {
-            if (/token|secret|password|authorization|api_access/i.test(key)) {
+            if (/token|secret|password|authorization|api_access|api_key|apikey/i.test(key)) {
                 obj[key] = '[redacted]';
             } else if (/phone/i.test(key) && typeof obj[key] === 'string') {
                 obj[key] = maskPhone(obj[key]);
@@ -689,6 +708,11 @@ class ChatwootNotificationService {
         this.client = null;
         cachedDbCredentials.expiresAt = 0;
         cachedInboxTemplates.expiresAt = 0;
+        cachedInboxMetaConfig = {
+            inboxId: null,
+            config: null,
+            expiresAt: 0
+        };
     }
 
     async getInboxTemplates() {
@@ -704,15 +728,66 @@ class ChatwootNotificationService {
             const res = await this.request('get', `/api/v1/accounts/${cw.accountId}/inboxes`);
             const inboxes = res?.payload || res?.data?.payload || (Array.isArray(res) ? res : []);
             if (Array.isArray(inboxes) && inboxes.length > 0) {
-                const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId)) || inboxes[0];
-                if (Array.isArray(inbox?.message_templates) && inbox.message_templates.length > 0) {
-                    const approved = inbox.message_templates.filter(t => String(t.status || 'APPROVED').toUpperCase() === 'APPROVED');
-                    cachedInboxTemplates = {
+                const exactInbox = inboxes.find(i => String(i.id) === String(cw.inboxId));
+                const inbox = exactInbox || (!inboxes.some(i => i?.id !== undefined) ? inboxes[0] : null);
+                if (inbox) {
+                    const metaCfg = extractInboxMetaConfig(inbox);
+                    if (metaCfg) {
+                        cachedInboxMetaConfig = {
+                            inboxId: String(cw.inboxId),
+                            config: metaCfg,
+                            expiresAt: Date.now() + 5 * 60 * 1000
+                        };
+                    }
+                    if (Array.isArray(inbox.message_templates) && inbox.message_templates.length > 0) {
+                        const approved = inbox.message_templates.filter(t => String(t.status || 'APPROVED').toUpperCase() === 'APPROVED');
+                        cachedInboxTemplates = {
+                            inboxId: String(cw.inboxId),
+                            templates: approved,
+                            expiresAt: Date.now() + 5 * 60 * 1000
+                        };
+                        return approved;
+                    }
+                }
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    async getInboxMetaConfig() {
+        if (isPlaceholderToken(config.chatwoot?.apiAccessToken)) {
+            await this.refreshDbCredentialsIfNeeded();
+        }
+        const cw = getChatwootConfig();
+        if (
+            cachedInboxMetaConfig.expiresAt > Date.now() &&
+            cachedInboxMetaConfig.inboxId === String(cw.inboxId) &&
+            cachedInboxMetaConfig.config !== null
+        ) {
+            return cachedInboxMetaConfig.config;
+        }
+        try {
+            const res = await this.request('get', `/api/v1/accounts/${cw.accountId}/inboxes`);
+            const inboxes = res?.payload || res?.data?.payload || (Array.isArray(res) ? res : []);
+            if (Array.isArray(inboxes) && inboxes.length > 0) {
+                const inbox = inboxes.find(i => String(i.id) === String(cw.inboxId))
+                    || (!inboxes.some(i => i?.id !== undefined) ? inboxes[0] : null);
+                if (inbox) {
+                    const metaCfg = extractInboxMetaConfig(inbox);
+                    cachedInboxMetaConfig = {
                         inboxId: String(cw.inboxId),
-                        templates: approved,
+                        config: metaCfg,
                         expiresAt: Date.now() + 5 * 60 * 1000
                     };
-                    return approved;
+                    if (Array.isArray(inbox.message_templates) && inbox.message_templates.length > 0) {
+                        const approved = inbox.message_templates.filter(t => String(t.status || 'APPROVED').toUpperCase() === 'APPROVED');
+                        cachedInboxTemplates = {
+                            inboxId: String(cw.inboxId),
+                            templates: approved,
+                            expiresAt: Date.now() + 5 * 60 * 1000
+                        };
+                    }
+                    return metaCfg;
                 }
             }
         } catch (_) {}
@@ -1136,6 +1211,9 @@ class ChatwootNotificationService {
         }
 
         if (found?.id) {
+            if (context.isAuthOtp) {
+                return found;
+            }
             const existingAttrs = found.custom_attributes || {};
             const existingRole = existingAttrs.role || existingAttrs.recipient_role;
             const upgradedRole = resolveUpgradedRole(existingRole, target.role);
@@ -1191,8 +1269,8 @@ class ChatwootNotificationService {
             phone_number: target.phone,
             email: target.email || undefined,
             ...(chatwootOrgId ? { organization_id: Number(chatwootOrgId) || chatwootOrgId } : {}),
-            custom_attributes: {
-                shipment_tracking_number: context.trackingNumber,
+            custom_attributes: compactObject({
+                shipment_tracking_number: context.isAuthOtp ? undefined : context.trackingNumber,
                 shipment_id: context.shipmentId,
                 role: initialRole,
                 recipient_role: initialRole,
@@ -1201,7 +1279,7 @@ class ChatwootNotificationService {
                     organization_id: chatwootOrgId,
                     organization_name: context.organizationName || context.organization?.name || undefined
                 } : {})
-            }
+            })
         };
 
         let created;
@@ -1390,6 +1468,10 @@ class ChatwootNotificationService {
                 }
             }
 
+            if (context.isAuthOtp) {
+                return conversation;
+            }
+
             // Update active shipment custom attributes
             try {
                 const res = await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations/${conversation.id}/custom_attributes`, {
@@ -1424,7 +1506,7 @@ class ChatwootNotificationService {
             inbox_id: Number(cw.inboxId),
             contact_id: Number(contactId),
             status: 'open',
-            custom_attributes: activeAttributes
+            custom_attributes: context.isAuthOtp ? undefined : activeAttributes
         });
 
         const created = await this.request('post', `/api/v1/accounts/${cw.accountId}/conversations`, payload);
@@ -1432,7 +1514,7 @@ class ChatwootNotificationService {
         logger.info(`[chatwoot] conversation created ${conversation?.id || 'unknown'} ${maskPhone(target.phone)}`);
 
         // Apply labels to newly created conversation
-        if (conversation?.id) {
+        if (conversation?.id && !context.isAuthOtp) {
             const labelRes = await this.applyConversationLabels(conversation.id, labels);
             if (labelRes?.payload) {
                 conversation.labels = labelRes.payload;
@@ -1690,7 +1772,7 @@ class ChatwootNotificationService {
         };
     }
 
-    async sendDirectOtp({ phone, name, otp }) {
+    async sendDirectOtp({ phone, name, otp, pollDelaysMs = undefined }) {
         if (!phone || !otp) {
             throw new Error('Inbox template dispatch requires a phone number and OTP');
         }
@@ -1700,14 +1782,21 @@ class ChatwootNotificationService {
         }
 
         const templates = await this.getInboxTemplates();
-        if (!Array.isArray(templates) || !templates.some(template => template.name === 'otptargetlogin')) {
+        const otpTemplate = Array.isArray(templates)
+            ? (templates.find(t => t.name === 'otptargetlogin' && String(t.language || '').toLowerCase() === 'en_us')
+                || templates.find(t => t.name === 'otptargetlogin'))
+            : null;
+        if (!otpTemplate) {
             throw new Error('Approved Inbox authentication template otptargetlogin is unavailable');
         }
 
-        const normalizedTargetPhone = normalizePhone(phone);
+        const normalizedTargetPhone = normalizePhone(phone, '965');
+        if (!normalizedTargetPhone) {
+            throw new Error('Inbox template dispatch requires a valid phone number');
+        }
         const target = { role: 'auth', name: name || 'User', phone: normalizedTargetPhone };
-        const contact = await this.findOrCreateContact(target, { trackingNumber: 'AUTH-OTP' });
-        const conversation = await this.findOrCreateConversation(contact, target, { trackingNumber: 'AUTH-OTP' });
+        const contact = await this.findOrCreateContact(target, { isAuthOtp: true });
+        const conversation = await this.findOrCreateConversation(contact, target, { isAuthOtp: true });
         const messagePayload = {
             message_type: 'outgoing',
             private: false,
@@ -1715,7 +1804,7 @@ class ChatwootNotificationService {
             template_params: {
                 name: 'otptargetlogin',
                 category: 'AUTHENTICATION',
-                language: 'en_US',
+                language: otpTemplate.language || 'en_US',
                 // Authentication Copy Code buttons require the code as a URL-button
                 // parameter in the Meta send API; Chatwoot reads it from this array.
                 processed_params: {
@@ -1726,7 +1815,69 @@ class ChatwootNotificationService {
             }
         };
 
-        return await this.sendMessage(conversation.id, messagePayload, { isTemplate: true });
+        const messageResponse = await this.sendMessage(conversation.id, messagePayload, { isTemplate: true });
+
+        const buildDeliveryError = async (msg) => {
+            const metaCfg = cachedInboxMetaConfig.config || await this.getInboxMetaConfig().catch(() => null);
+            const externalError = msg?.content_attributes?.external_error || msg?.external_error || null;
+            const errText = externalError || 'Message marked failed in Chatwoot';
+            const deliveryErr = new Error(`Chatwoot WhatsApp delivery failed: ${errText}`);
+            deliveryErr.externalError = externalError || errText;
+            if (msg?.id !== undefined && msg?.id !== null) {
+                deliveryErr.chatwootMessageId = String(msg.id);
+            }
+            deliveryErr.phoneNumberId = metaCfg?.phoneNumberId || null;
+            return deliveryErr;
+        };
+
+        if (
+            String(messageResponse?.status || '').toLowerCase() === 'failed' ||
+            messageResponse?.content_attributes?.external_error
+        ) {
+            throw await buildDeliveryError(messageResponse);
+        }
+
+        if (messageResponse?.id && conversation?.id) {
+            const cw = getChatwootConfig();
+            const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.JEST_WORKER_ID);
+            const delays = Array.isArray(pollDelaysMs) ? pollDelaysMs : (isTestEnv ? [0] : [1500, 1500]);
+
+            for (const delayMs of delays) {
+                if (delayMs > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+                let messagesList = null;
+                try {
+                    const messagesRes = await this.request('get', `/api/v1/accounts/${cw.accountId}/conversations/${conversation.id}/messages`);
+                    messagesList = messagesRes?.payload
+                        || messagesRes?.data?.payload
+                        || (Array.isArray(messagesRes?.data) ? messagesRes.data : (Array.isArray(messagesRes) ? messagesRes : []));
+                } catch (pollErr) {
+                    logger.debug(`[chatwoot] post-send OTP status poll failed: ${pollErr.message}`);
+                    break;
+                }
+
+                if (!Array.isArray(messagesList) || messagesList.length === 0) {
+                    break;
+                }
+
+                const matchedMsg = messagesList.find(m => String(m?.id) === String(messageResponse.id));
+                if (!matchedMsg) {
+                    break;
+                }
+
+                const msgStatus = String(matchedMsg.status || '').toLowerCase();
+                const externalError = matchedMsg.content_attributes?.external_error || matchedMsg.external_error || null;
+                if (msgStatus === 'failed' || externalError) {
+                    throw await buildDeliveryError(matchedMsg);
+                }
+                if (msgStatus === 'delivered' || msgStatus === 'read') {
+                    return { ...messageResponse, status: msgStatus };
+                }
+            }
+        }
+
+        return messageResponse;
     }
 
     async buildShipmentNotificationPreview(eventType, shipment, recipientRole = null, requestedTemplate = null) {
